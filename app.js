@@ -84,6 +84,11 @@
     $$("nav.tabs button").forEach(b => b.classList.toggle("on", b.dataset.v === UI.vista));
     ({ resumen: vResumen, movs: vMovs, importar: vImportar, autos: vAutos, ajustes: vAjustes })[UI.vista]();
     pintarSync();
+    const av = $("#aviso");
+    if (!G.token && UI.vista !== "ajustes") {
+      av.innerHTML = `<div class="note warn row" style="justify-content:space-between"><span class="grow">${S.cuenta ? "La sesión de Google venció. Reconecta para ver lo que agregaste en otros dispositivos." : "Conecta tu cuenta de Google para ver aquí lo que agregaste en otros dispositivos."}</span><button class="btn pri sm" id="avCon">${S.cuenta ? "Reconectar" : "Conectar"}</button></div>`;
+      $("#avCon").onclick = () => conectar();
+    } else av.innerHTML = "";
   }
 
   /* ----- Resumen ----- */
@@ -600,7 +605,8 @@
   $("#fab").onclick = () => formulario("mov");
   $$("nav.tabs button").forEach(b => b.onclick = () => { UI.vista = b.dataset.v; pintar(); window.scrollTo(0, 0); });
   let tR; window.addEventListener("resize", () => { clearTimeout(tR); tR = setTimeout(() => UI.vista === "resumen" && pintar(), 150); });
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && G.token && Date.now() - S.ultimaSync > 120000) sincronizar(false); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && G.token && Date.now() - S.ultimaSync > 20000) sincronizar(false); });
+  setInterval(() => { if (!document.hidden && G.token && !$("#dlg").open && !UI.prev && Date.now() - S.ultimaSync > 60000) sincronizar(false); }, 15000);
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });
 
   if (correrAutomaticos()) guardar();
