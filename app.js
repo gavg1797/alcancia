@@ -530,7 +530,7 @@
     const q = encodeURIComponent(`name='${CFG.nombreHoja.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`);
     const l = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&orderBy=createdTime`);
     if (l.files && l.files.length) { S.hojaId = l.files[0].id; return asegurarHoja(); }
-    const n = await api(SH, { method: "POST", body: { properties: { title: CFG.nombreHoja, locale: "es_CR" }, sheets: Object.keys(HOJAS).map(t => ({ properties: { title: t, gridProperties: { frozenRowCount: 1 } } })) } });
+    const n = await api(SH, { method: "POST", body: { properties: { title: CFG.nombreHoja }, sheets: Object.keys(HOJAS).map(t => ({ properties: { title: t, gridProperties: { frozenRowCount: 1 } } })) } });
     S.hojaId = n.spreadsheetId;
     await api(`${SH}/${S.hojaId}/values:batchUpdate`, { method: "POST", body: { valueInputOption: "RAW", data: Object.keys(HOJAS).map(t => ({ range: t + "!A1", values: [HOJAS[t]] })) } });
   }
