@@ -98,11 +98,14 @@ th{font-size:12px;color:var(--text-2);font-weight:600}
 .empty{text-align:center;color:var(--text-2);padding:26px 10px}
 .list{list-style:none;margin:0;padding:0}
 .list .day{font-size:12px;color:var(--text-3);padding:12px 2px 4px;text-transform:capitalize}
-.item{display:grid;grid-template-columns:10px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:6px;cursor:pointer}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:6px;cursor:pointer}
 .item i{width:10px;height:10px;border-radius:3px}
 .item .d{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .item .m{font-size:12.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .a{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.item .ck{width:20px;height:20px;border:2px solid var(--text-3);border-radius:6px;display:grid;place-items:center;font-size:13px;font-weight:700;margin-left:-5px}
+.item.sel{border-color:var(--accent)}.item.sel .ck{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.toast button{font:inherit}
 .drop{border:2px dashed var(--line);border-radius:var(--r);padding:28px 16px;text-align:center;cursor:pointer;display:block}
 .drop.over{border-color:var(--accent);background:var(--surface-2)}
 .drop b{display:block;font-size:17px;margin-bottom:4px}

@@ -1,5 +1,5 @@
 /* Alcancía · service worker: la app abre sin internet con la última versión vista. */
-const V = "alcancia-v5";
+const V = "alcancia-v6";
 const SHELL = ["./", "index.html", "app.js", "core.js", "config.js", "icon.svg", "icon-192.png", "manifest.webmanifest",
   "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",

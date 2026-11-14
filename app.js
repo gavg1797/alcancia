@@ -18,7 +18,7 @@
   function leer() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
   function guardar() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { toast("No se pudo guardar en este dispositivo (memoria llena)."); } }
 
-  const UI = { vista: "resumen", periodo: "mes", desde: "", hasta: "", grano: "", series: { gasto: true, ahorro: true, inversion: true, ingreso: false }, dona: "categorias", q: "", ftipo: "", limite: 200, prev: null, cola: [] };
+  const UI = { sel: null, vista: "resumen", periodo: "mes", desde: "", hasta: "", grano: "", series: { gasto: true, ahorro: true, inversion: true, ingreso: false }, dona: "categorias", q: "", ftipo: "", limite: 200, prev: null, cola: [] };
 
   /* ---------- formato ---------- */
   const nf = {};
@@ -219,22 +219,47 @@
 
   /* ----- Movimientos ----- */
   function vMovs() {
-    const el = $("#v-movs"), q = C.norm(UI.q);
+    const el = $("#v-movs"), q = C.norm(UI.q), sel = UI.sel;
     let ms = S.movs.filter(m => (!UI.ftipo || m.tipo === UI.ftipo) && (!q || C.norm([m.descripcion, m.categoria, m.cuenta, m.nota].join(" ")).includes(q)));
     ms.sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : (b.actualizado || 0) - (a.actualizado || 0));
-    const total = ms.length; ms = ms.slice(0, UI.limite);
+    const todos = ms, total = ms.length; ms = ms.slice(0, UI.limite);
+    if (sel) for (const id of [...sel]) if (!todos.some(m => m.id === id)) sel.delete(id);
     let html = "", dia = "";
     for (const m of ms) {
       if (m.fecha !== dia) { dia = m.fecha; html += `<li class="day">${esc(fechaLarga(dia))}</li>`; }
-      html += `<li><button class="item" data-id="${esc(m.id)}"><i style="background:${COLOR[m.tipo]}"></i><span style="min-width:0"><span class="d" style="display:block">${esc(m.descripcion || m.categoria)}</span><span class="m" style="display:block">${esc(C.TIPO_NOMBRE[m.tipo])} · ${esc(m.categoria)}${m.cuenta ? " · " + esc(m.cuenta) : ""}${m.origen === "automatico" ? " · automático" : ""}</span></span><span class="a">${m.tipo === "ingreso" ? "+" : "−"}${fmt(Math.abs(m.monto), m.moneda)}</span></button></li>`;
+      html += `<li><button class="item ${sel && sel.has(m.id) ? "sel" : ""}" data-id="${esc(m.id)}" ${sel ? `role="checkbox" aria-checked="${sel.has(m.id)}"` : ""}>${sel ? `<span class="ck">${sel.has(m.id) ? "✓" : ""}</span>` : `<i style="background:${COLOR[m.tipo]}"></i>`}<span style="min-width:0"><span class="d" style="display:block">${esc(m.descripcion || m.categoria)}</span><span class="m" style="display:block">${esc(C.TIPO_NOMBRE[m.tipo])} · ${esc(m.categoria)}${m.cuenta ? " · " + esc(m.cuenta) : ""}${m.origen === "automatico" ? " · automático" : ""}</span></span><span class="a">${m.tipo === "ingreso" ? "+" : "−"}${fmt(Math.abs(m.monto), m.moneda)}</span></button></li>`;
     }
     el.innerHTML = `<div class="filters"><input type="search" id="mQ" class="grow" placeholder="Buscar…" value="${esc(UI.q)}" aria-label="Buscar movimientos">
-      <select id="mT" aria-label="Tipo"><option value="">Todos</option>${C.TIPOS.map(t => `<option value="${t}" ${UI.ftipo === t ? "selected" : ""}>${PLURAL[t]}</option>`).join("")}</select></div>
+      <select id="mT" aria-label="Tipo"><option value="">Todos</option>${C.TIPOS.map(t => `<option value="${t}" ${UI.ftipo === t ? "selected" : ""}>${PLURAL[t]}</option>`).join("")}</select>
+      ${total ? `<button class="btn" id="mSel">${sel ? "Cancelar" : "Seleccionar"}</button>` : ""}</div>
+      ${sel ? `<div class="note row" style="justify-content:space-between;position:sticky;top:60px;z-index:4"><span>${sel.size} seleccionados</span><span class="row"><button class="btn sm" id="mTodos">${sel.size === total ? "Ninguno" : `Todos (${total})`}</button><button class="btn sm danger" id="mDel" ${sel.size ? "" : "disabled"}>Eliminar</button></span></div>` : total ? `<p class="sub">Toca un movimiento para editarlo o eliminarlo. Usa <b>Seleccionar</b> para eliminar varios a la vez.</p>` : ""}
       ${total ? `<ul class="list">${html}</ul>${total > ms.length ? `<button class="btn" id="mMas" style="width:100%">Ver más (${total - ms.length} restantes)</button>` : ""}` : `<div class="card empty">${S.movs.length ? "Nada coincide con la búsqueda." : "Aún no hay movimientos. Toca <b>+</b> para agregar el primero."}</div>`}`;
     $("#mQ").oninput = e => { UI.q = e.target.value; const p = e.target.selectionStart; vMovs(); const i = $("#mQ"); i.focus(); i.setSelectionRange(p, p); };
     $("#mT").onchange = e => { UI.ftipo = e.target.value; vMovs(); };
     if ($("#mMas")) $("#mMas").onclick = () => { UI.limite += 300; vMovs(); };
-    $$(".item", el).forEach(b => b.onclick = () => formulario("mov", S.movs.find(m => m.id === b.dataset.id)));
+    if ($("#mSel")) $("#mSel").onclick = () => { UI.sel = sel ? null : new Set(); vMovs(); };
+    if ($("#mTodos")) $("#mTodos").onclick = () => { UI.sel = new Set(sel.size === total ? [] : todos.map(m => m.id)); vMovs(); };
+    if ($("#mDel")) $("#mDel").onclick = () => {
+      const n = sel.size;
+      if (!n || !confirm(`¿Eliminar ${n} movimiento${n > 1 ? "s" : ""}? También se quitan de la hoja de Google y de los gráficos.`)) return;
+      const copia = S.movs.filter(m => sel.has(m.id));
+      for (const id of sel) quitarMov(id);
+      UI.sel = null; cambio(); deshacer(copia);
+    };
+    $$(".item", el).forEach(b => b.onclick = () => {
+      if (sel) { sel.has(b.dataset.id) ? sel.delete(b.dataset.id) : sel.add(b.dataset.id); const y = window.scrollY; vMovs(); window.scrollTo(0, y); }
+      else formulario("mov", S.movs.find(m => m.id === b.dataset.id));
+    });
+  }
+  /* aviso con botón para recuperar lo recién eliminado */
+  function deshacer(copia) {
+    const e = $("#toast");
+    e.innerHTML = `${copia.length > 1 ? copia.length + " eliminados" : "Eliminado"}. <button id="tUndo" style="background:none;border:0;color:inherit;font-weight:700;text-decoration:underline;cursor:pointer">Deshacer</button>`;
+    e.style.display = "block"; clearTimeout(tT); tT = setTimeout(() => e.style.display = "none", 8000);
+    $("#tUndo").onclick = () => {
+      for (const m of copia) { S.borrados = S.borrados.filter(x => x !== m.id); ponerMov(m); }
+      e.style.display = "none"; cambio();
+    };
   }
 
   /* ----- formulario (movimiento o automático) ----- */
@@ -269,8 +294,8 @@
     $("#fCan").onclick = () => d.close();
     if ($("#fDel")) $("#fDel").onclick = () => {
       if (!confirm(auto ? "¿Eliminar este automático? Los movimientos que ya generó se conservan." : "¿Eliminar este movimiento?")) return;
-      if (auto) { S.autos = S.autos.filter(a => a.id !== o.id); S.autosSucio = Date.now(); } else quitarMov(o.id);
-      d.close(); cambio(); toast("Eliminado.");
+      if (auto) { S.autos = S.autos.filter(a => a.id !== o.id); S.autosSucio = Date.now(); d.close(); cambio(); toast("Eliminado."); }
+      else { quitarMov(o.id); d.close(); cambio(); deshacer([o]); }
     };
     f.onsubmit = e => {
       e.preventDefault();
