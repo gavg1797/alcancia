@@ -109,6 +109,13 @@ th{font-size:12px;color:var(--text-2);font-weight:600}
 .drop{border:2px dashed var(--line);border-radius:var(--r);padding:28px 16px;text-align:center;cursor:pointer;display:block}
 .drop.over{border-color:var(--accent);background:var(--surface-2)}
 .drop b{display:block;font-size:17px;margin-bottom:4px}
+details.pg{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;padding:0 12px;background:var(--surface)}
+details.pg summary{display:flex;gap:10px;align-items:center;padding:10px 0;cursor:pointer;list-style:none}
+details.pg summary::-webkit-details-marker{display:none}
+details.pg summary input{width:22px;height:22px;flex:none}
+details.pg .car{color:var(--text-3);transition:transform .15s}details.pg[open] .car{transform:rotate(180deg)}
+details.pg .m{font-size:13px;color:var(--text-2)}
+details.pg .pr:last-child{border-bottom:0}
 .pr{display:grid;grid-template-columns:22px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .pr input[type=checkbox]{width:20px;height:20px;margin-top:2px}
 .pr .pd{font-weight:500;overflow-wrap:anywhere}

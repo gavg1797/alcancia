@@ -415,9 +415,20 @@
     return mejor;
   }
   function vPrevia(el) {
+    const repintar = () => { const y = window.scrollY; vPrevia(el); window.scrollTo(0, y); };
     const P = UI.prev, sel = P.filas.filter(x => x.sel), tc = +S.aj.tc || 500;
     const deb = sel.filter(x => x.mov.tipo !== "ingreso").reduce((a, x) => a + x.mov.monto, 0), cre = sel.filter(x => x.mov.tipo === "ingreso").reduce((a, x) => a + x.mov.monto, 0);
     const dups = P.filas.filter(x => x.dup).length;
+    if (P.grupo == null) { P.grupo = "dia"; P.abiertos = new Set(); }
+    const orden = P.filas.map((x, i) => i).sort((a, b) => P.filas[a].mov.fecha < P.filas[b].mov.fecha ? -1 : P.filas[a].mov.fecha > P.filas[b].mov.fecha ? 1 : a - b);
+    const grupos = [];
+    for (const i of orden) { const k = P.grupo ? P.filas[i].mov.fecha.slice(0, P.grupo === "dia" ? 10 : 7) : ""; let g = grupos[grupos.length - 1]; if (!g || g.k !== k) grupos.push(g = { k, is: [] }); g.is.push(i); }
+    if (P.grupo && !P.vistos) { P.vistos = true; if (P.grupo === "dia" || grupos.length === 1) grupos.forEach(g => P.abiertos.add(g.k)); }
+    const fila = (x, i) => `<li class="pr ${x.dup ? "dup" : ""}"><input type="checkbox" data-i="${i}" class="pS" ${x.sel ? "checked" : ""} aria-label="Incluir">
+        <div style="min-width:0"><div class="pd">${esc(x.mov.descripcion)} ${x.dup ? `<span class="badge">ya guardado</span>` : ""}</div>
+          <div class="m">${esc(etiqueta(x.mov.fecha, true))} · <b>${x.f.sentido === "credito" ? "crédito" : "débito"} ${fmt(x.mov.monto, P.moneda)}</b></div>
+          <div class="row" style="margin-top:6px"><select data-i="${i}" class="pT" aria-label="Tipo">${C.TIPOS.map(t => `<option value="${t}" ${x.mov.tipo === t ? "selected" : ""}>${C.TIPO_NOMBRE[t]}</option>`).join("")}</select>
+          <select data-i="${i}" class="pC grow" aria-label="Categoría">${[...new Set([x.mov.categoria, ...catsDe(x.mov.tipo)])].map(c => `<option ${x.mov.categoria === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div></div></li>`;
     el.innerHTML = `<div class="card"><h2>Revisar: ${esc(P.archivo)}</h2>
       <p class="sub">${P.filas.length} movimientos encontrados${UI.cola.length ? ` · faltan ${UI.cola.length} archivos` : ""}</p>
       <div class="two" style="margin-bottom:10px"><label class="f">Cuenta o banco<input id="pCta" list="pdl" value="${esc(P.cuenta)}" placeholder="Ej.: BCR colones"><datalist id="pdl">${cuentas().map(c => `<option value="${esc(c)}">`).join("")}</datalist></label>
@@ -426,26 +437,28 @@
       ${dups ? `<p class="note">${dups} ya estaban guardados y vienen desmarcados para no duplicarlos.</p>` : ""}
       <div class="tiles" style="grid-template-columns:1fr 1fr"><div class="tile"><div class="k">Débitos seleccionados</div><div class="v">${fmt(deb, P.moneda)}</div></div><div class="tile"><div class="k">Créditos seleccionados</div><div class="v">${fmt(cre, P.moneda)}</div></div></div>
       <div class="row" style="margin-bottom:8px"><button class="btn sm" id="pInv">Invertir débitos ↔ créditos</button><button class="btn sm" id="pTod">${sel.length === P.filas.length ? "Desmarcar todos" : "Marcar todos"}</button></div>
-      <ul class="list prev">
-      ${P.filas.map((x, i) => `<li class="pr ${x.dup ? "dup" : ""}"><input type="checkbox" data-i="${i}" class="pS" ${x.sel ? "checked" : ""} aria-label="Incluir">
-        <div style="min-width:0"><div class="pd">${esc(x.mov.descripcion)} ${x.dup ? `<span class="badge">ya guardado</span>` : ""}</div>
-          <div class="m">${esc(etiqueta(x.mov.fecha, true))} · <b>${x.f.sentido === "credito" ? "crédito" : "débito"} ${fmt(x.mov.monto, P.moneda)}</b></div>
-          <div class="row" style="margin-top:6px"><select data-i="${i}" class="pT" aria-label="Tipo">${C.TIPOS.map(t => `<option value="${t}" ${x.mov.tipo === t ? "selected" : ""}>${C.TIPO_NOMBRE[t]}</option>`).join("")}</select>
-          <select data-i="${i}" class="pC grow" aria-label="Categoría">${[...new Set([x.mov.categoria, ...catsDe(x.mov.tipo)])].map(c => `<option ${x.mov.categoria === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div></div></li>`).join("")}
-      </ul>
+      <div class="row" style="justify-content:space-between;margin:4px 0 8px"><span class="sub" style="margin:0">Agrupar para elegir</span><div class="seg" id="pGr">${[["dia", "Por día"], ["mes", "Por mes"], ["", "Sin agrupar"]].map(g => `<button data-g="${g[0]}" class="${P.grupo === g[0] ? "on" : ""}">${g[1]}</button>`).join("")}</div></div>
+      ${grupos.map(g => {
+        const ns = g.is.filter(i => P.filas[i].sel).length, tot = g.is.filter(i => P.filas[i].sel).reduce((a, i) => a + (P.filas[i].mov.tipo === "ingreso" ? 1 : -1) * P.filas[i].mov.monto, 0);
+        const filas = `<ul class="list prev">${g.is.map(i => fila(P.filas[i], i)).join("")}</ul>`;
+        return g.k ? `<details class="pg" data-k="${g.k}" ${P.abiertos.has(g.k) ? "open" : ""}><summary><input type="checkbox" class="pG" data-k="${g.k}" ${ns === g.is.length ? "checked" : ""} data-ind="${ns > 0 && ns < g.is.length ? 1 : ""}" aria-label="Incluir todo ${esc(etiqueta(g.k, true))}"><span class="grow"><b>${esc(etiqueta(g.k, true))}</b><span class="m" style="display:block">${ns} de ${g.is.length} · neto ${fmt(tot, P.moneda)}</span></span><span class="car">▾</span></summary>${filas}</details>` : filas;
+      }).join("")}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="pDes">Descartar</button><button class="btn pri" id="pOk" ${sel.length ? "" : "disabled"}>Guardar ${sel.length} movimientos</button></div></div>`;
     void tc;
     $("#pCta").onchange = e => { P.cuenta = e.target.value.trim(); prepararPrevia(false); vPrevia(el); };
     $("#pMon").onchange = e => { P.moneda = e.target.value; P.monedaDetectada = true; prepararPrevia(false); vPrevia(el); };
+    $$("#pGr button").forEach(b => b.onclick = () => { P.grupo = b.dataset.g; P.vistos = false; P.abiertos = new Set(); vPrevia(el); });
+    $$(".pG", el).forEach(c => { c.indeterminate = !!c.dataset.ind; c.onclick = e => e.stopPropagation(); c.onchange = () => { const g = grupos.find(g => g.k === c.dataset.k); g.is.forEach(i => P.filas[i].sel = c.checked); repintar(); }; });
+    $$("details.pg", el).forEach(d => d.ontoggle = () => { d.open ? P.abiertos.add(d.dataset.k) : P.abiertos.delete(d.dataset.k); });
     $("#pInv").onclick = () => { for (const x of P.filas) { x.f.sentido = x.f.sentido === "credito" ? "debito" : "credito"; x.tocado = false; } prepararPrevia(true); vPrevia(el); };
     $("#pTod").onclick = () => { const v = sel.length !== P.filas.length; P.filas.forEach(x => x.sel = v); vPrevia(el); };
-    $$(".pS", el).forEach(c => c.onchange = () => { P.filas[+c.dataset.i].sel = c.checked; vPrevia(el); });
-    $$(".pT", el).forEach(s => s.onchange = () => { const x = P.filas[+s.dataset.i]; x.mov.tipo = s.value; x.mov.categoria = C.categorizar(x.mov.descripcion, s.value, S.aj.reglas); x.tocado = true; vPrevia(el); });
+    $$(".pS", el).forEach(c => c.onchange = () => { P.filas[+c.dataset.i].sel = c.checked; repintar(); });
+    $$(".pT", el).forEach(s => s.onchange = () => { const x = P.filas[+s.dataset.i]; x.mov.tipo = s.value; x.mov.categoria = C.categorizar(x.mov.descripcion, s.value, S.aj.reglas); x.tocado = true; repintar(); });
     $$(".pC", el).forEach(s => s.onchange = () => {
       const x = P.filas[+s.dataset.i]; x.mov.categoria = s.value; x.tocado = true; aprender(x.mov.descripcion, x.mov.tipo, s.value);
       const k = C.claveDe(x.mov.descripcion);     // misma corrección para los demás del mismo comercio
       if (k.length >= 3) for (const y of P.filas) if (y !== x && !y.tocado && y.mov.tipo === x.mov.tipo && C.claveDe(y.mov.descripcion) === k) y.mov.categoria = s.value;
-      vPrevia(el);
+      repintar();
     });
     $("#pDes").onclick = () => siguienteArchivo();
     $("#pOk").onclick = () => {
