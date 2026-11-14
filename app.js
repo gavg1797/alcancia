@@ -6,7 +6,7 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const COLOR = { ingreso: "var(--s-ingreso)", gasto: "var(--s-gasto)", ahorro: "var(--s-ahorro)", inversion: "var(--s-inversion)", disponible: "var(--s-neutral)" };
   const PLURAL = { ingreso: "Ingresos", gasto: "Gastos", ahorro: "Ahorros", inversion: "Inversiones" };
-  const FREC = { semanal: "Cada semana", bisemanal: "Cada 2 semanas", quincenal: "Quincenal (15 y fin de mes)", mensual: "Cada mes", anual: "Cada año" };
+  const FREC = { unica: "Una sola vez (no se repite)", semanal: "Cada semana", bisemanal: "Cada 2 semanas", quincenal: "Quincenal (15 y fin de mes)", mensual: "Cada mes", anual: "Cada año" };
 
   /* ---------- estado local ---------- */
   const LS = "alcancia.v1";
@@ -245,7 +245,7 @@
       <div class="two"><label class="f">Categoría<input name="categoria" list="dlCat" value="${esc(o.categoria)}" placeholder="Automática" autocomplete="off"><datalist id="dlCat"></datalist></label>
         <label class="f">Cuenta<input name="cuenta" list="dlCta" value="${esc(o.cuenta)}" autocomplete="off"><datalist id="dlCta">${cuentas().map(c => `<option value="${esc(c)}">`).join("")}</datalist></label></div>
       ${auto ? `<label class="f">Se repite<select name="frecuencia">${Object.keys(FREC).map(k => `<option value="${k}" ${o.frecuencia === k ? "selected" : ""}>${FREC[k]}</option>`).join("")}</select></label>
-        <div class="two"><label class="f">Desde<input type="date" name="inicio" required value="${esc(o.inicio)}"></label><label class="f">Hasta (opcional)<input type="date" name="fin" value="${esc(o.fin)}"></label></div>
+        <div class="two"><label class="f"><span id="fIniTxt">Desde</span><input type="date" name="inicio" required value="${esc(o.inicio)}"></label><label class="f" id="fFinBox">Hasta (opcional)<input type="date" name="fin" value="${esc(o.fin)}"></label></div>
         <label class="row" style="font-size:14px"><input type="checkbox" name="activo" ${+o.activo ? "checked" : ""}> Activo</label>`
         : `<div class="two"><label class="f">Fecha<input type="date" name="fecha" required value="${esc(o.fecha)}"></label><label class="f">Nota (opcional)<input name="nota" value="${esc(o.nota)}" autocomplete="off"></label></div>`}
       <p class="sub" id="fAyuda" style="margin:0"></p>
@@ -260,6 +260,7 @@
     };
     $$("#fTipo button").forEach(b => b.onclick = () => { tipo = b.dataset.t; ponTipo(); });
     ponTipo();
+    if (auto) { const pf = () => { const u = f.frecuencia.value === "unica"; $("#fFinBox").style.display = u ? "none" : ""; $("#fIniTxt").textContent = u ? "Fecha" : "Desde"; }; f.frecuencia.onchange = pf; pf(); }
     $("#fCan").onclick = () => d.close();
     if ($("#fDel")) $("#fDel").onclick = () => {
       if (!confirm(auto ? "¿Eliminar este automático? Los movimientos que ya generó se conservan." : "¿Eliminar este movimiento?")) return;
@@ -273,8 +274,8 @@
       const desc = v.descripcion.trim();
       const cat = v.categoria.trim() || C.categorizar(desc, tipo, S.aj.reglas);
       if (auto) {
-        const r = Object.assign({}, o, { id: o.id || C.nuevoId("r"), tipo, monto, moneda: v.moneda, descripcion: desc, categoria: cat, cuenta: v.cuenta.trim(), frecuencia: v.frecuencia, inicio: v.inicio, fin: v.fin || "", activo: v.activo ? 1 : 0 });
-        if (nuevo || r.inicio !== o.inicio) r.ultima = "";
+        const r = Object.assign({}, o, { id: o.id || C.nuevoId("r"), tipo, monto, moneda: v.moneda, descripcion: desc, categoria: cat, cuenta: v.cuenta.trim(), frecuencia: v.frecuencia, inicio: v.inicio, fin: v.frecuencia === "unica" ? "" : (v.fin || ""), activo: v.activo ? 1 : 0 });
+        if (nuevo || r.inicio !== o.inicio || r.frecuencia !== o.frecuencia) r.ultima = "";
         const i = S.autos.findIndex(a => a.id === r.id); if (i >= 0) S.autos[i] = r; else S.autos.push(r);
         S.autosSucio = Date.now();
         const n = correrAutomaticos();

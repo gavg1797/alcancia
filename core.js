@@ -316,7 +316,8 @@
     const tras = r.ultima || sumarDias(r.inicio, -1);
     const ok = f => f > tras && f >= r.inicio && f <= fin;
     const [y0, m0, d0] = r.inicio.split("-").map(Number);
-    if (r.frecuencia === "semanal" || r.frecuencia === "bisemanal") {
+    if (r.frecuencia === "unica") { if (ok(r.inicio)) out.push(r.inicio); }
+    else if (r.frecuencia === "semanal" || r.frecuencia === "bisemanal") {
       const paso = r.frecuencia === "semanal" ? 7 : 14;
       for (let f = r.inicio, n = 0; f <= fin && n < 3000; f = sumarDias(f, paso), n++) if (ok(f)) out.push(f);
     } else if (r.frecuencia === "anual") {
@@ -420,7 +421,7 @@
     o.monto = parseAmount(o.monto);
     o.activo = (o.activo === "" || +o.activo || /^(si|sí|true|x)$/i.test(String(o.activo))) ? 1 : 0;
     o.moneda = /usd|\$|dolar/.test(norm(o.moneda)) ? "USD" : "CRC";
-    if (!["semanal", "bisemanal", "quincenal", "mensual", "anual"].includes(o.frecuencia)) o.frecuencia = "mensual";
+    if (!["unica", "semanal", "bisemanal", "quincenal", "mensual", "anual"].includes(o.frecuencia)) o.frecuencia = "mensual";
     return !!(o.inicio && o.monto && TIPOS.includes(o.tipo));
   }
 
