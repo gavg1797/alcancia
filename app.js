@@ -353,7 +353,7 @@
       if (!r.filas.length) { toast(`No se encontraron movimientos en ${f.name}.`); return siguienteArchivo(); }
       const pista = C.norm(f.name + " " + r.texto);
       const cuenta = /coopenae/.test(pista) ? "Coopenae" : /\bbcr\b|banco de costa rica/.test(pista) ? "BCR" : /banco nacional|\bbncr\b/.test(pista) ? "BN" : /\bbac\b/.test(pista) ? "BAC" : "";
-      UI.prev = { archivo: f.name, cuenta, moneda: r.moneda || "CRC", monedaDetectada: !!r.moneda, filas: r.filas.map(x => ({ f: x, sel: true })) };
+      UI.prev = { archivo: f.name, cuenta, moneda: r.moneda || "CRC", monedaDetectada: !!r.moneda, filas: r.filas.map(x => ({ f: x, sel: true })), crudo: r.crudo, orden: r.orden, ordenSeguro: r.ordenSeguro, fechasNumericas: r.fechasNumericas };
       prepararPrevia(true);
     } catch (e) {
       console.error(e);
@@ -395,6 +395,7 @@
       }
       lineas.forEach(l => l.items.sort((a, b) => a.x - b.x));
       const r = C.parsePdfLineas(lineas);
+      r.crudo = { pdf: lineas };
       if (!r.filas.length && !lineas.length) throw new Error("Este PDF es una imagen escaneada y no tiene texto. Descarga el estado en Excel o CSV.");
       r.texto = lineas.slice(0, 25).map(l => l.items.map(i => i.str).join(" ")).join(" ");
       return r;
@@ -409,7 +410,7 @@
     for (const n of wb.SheetNames) {
       const filas = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" });
       const r = C.parseTabla(filas);
-      if (r.filas.length > mejor.filas.length) { mejor = r; texto = filas.slice(0, 12).map(x => x.join(" ")).join(" "); }
+      if (r.filas.length > mejor.filas.length) { mejor = r; mejor.crudo = { tabla: filas }; texto = filas.slice(0, 12).map(x => x.join(" ")).join(" "); }
     }
     mejor.texto = texto;
     return mejor;
@@ -433,6 +434,8 @@
       <p class="sub">${P.filas.length} movimientos encontrados${UI.cola.length ? ` · faltan ${UI.cola.length} archivos` : ""}</p>
       <div class="two" style="margin-bottom:10px"><label class="f">Cuenta o banco<input id="pCta" list="pdl" value="${esc(P.cuenta)}" placeholder="Ej.: BCR colones"><datalist id="pdl">${cuentas().map(c => `<option value="${esc(c)}">`).join("")}</datalist></label>
         <label class="f">Moneda del estado<select id="pMon"><option value="CRC" ${P.moneda === "CRC" ? "selected" : ""}>₡ Colones</option><option value="USD" ${P.moneda === "USD" ? "selected" : ""}>$ Dólares</option></select></label></div>
+      ${P.fechasNumericas ? `<label class="f" style="margin-bottom:10px">Formato de las fechas<select id="pOrd"><option value="dmy" ${P.orden === "dmy" ? "selected" : ""}>Día/Mes/Año · español (31/12/2026)</option><option value="mdy" ${P.orden === "mdy" ? "selected" : ""}>Mes/Día/Año · inglés (12/31/2026)</option></select></label>
+        ${P.ordenSeguro ? "" : `<p class="note warn">No se pudo saber con certeza si las fechas vienen como día/mes o mes/día. Revisa que el formato elegido sea el correcto.</p>`}` : ""}
       ${P.monedaDetectada ? "" : `<p class="note warn">No se pudo detectar la moneda del archivo. Confirma que sea la correcta.</p>`}
       ${dups ? `<p class="note">${dups} ya estaban guardados y vienen desmarcados para no duplicarlos.</p>` : ""}
       <div class="tiles" style="grid-template-columns:1fr 1fr"><div class="tile"><div class="k">Débitos seleccionados</div><div class="v">${fmt(deb, P.moneda)}</div></div><div class="tile"><div class="k">Créditos seleccionados</div><div class="v">${fmt(cre, P.moneda)}</div></div></div>
@@ -450,6 +453,12 @@
     $$("#pGr button").forEach(b => b.onclick = () => { P.grupo = b.dataset.g; P.vistos = false; P.abiertos = new Set(); vPrevia(el); });
     $$(".pG", el).forEach(c => { c.indeterminate = !!c.dataset.ind; c.onclick = e => e.stopPropagation(); c.onchange = () => { const g = grupos.find(g => g.k === c.dataset.k); g.is.forEach(i => P.filas[i].sel = c.checked); repintar(); }; });
     $$("details.pg", el).forEach(d => d.ontoggle = () => { d.open ? P.abiertos.add(d.dataset.k) : P.abiertos.delete(d.dataset.k); });
+    if ($("#pOrd")) $("#pOrd").onchange = e => {
+      const o = e.target.value, r = P.crudo.pdf ? C.parsePdfLineas(P.crudo.pdf, { orden: o }) : C.parseTabla(P.crudo.tabla, { orden: o });
+      if (!r.filas.length) { toast("Con ese formato no se reconoce ninguna fecha."); e.target.value = P.orden; return; }
+      P.orden = o; P.ordenSeguro = true; P.filas = r.filas.map(x => ({ f: x, sel: true })); P.vistos = false; P.abiertos = new Set();
+      prepararPrevia(true); vPrevia(el);
+    };
     $("#pInv").onclick = () => { for (const x of P.filas) { x.f.sentido = x.f.sentido === "credito" ? "debito" : "credito"; x.tocado = false; } prepararPrevia(true); vPrevia(el); };
     $("#pTod").onclick = () => { const v = sel.length !== P.filas.length; P.filas.forEach(x => x.sel = v); vPrevia(el); };
     $$(".pS", el).forEach(c => c.onchange = () => { P.filas[+c.dataset.i].sel = c.checked; repintar(); });

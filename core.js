@@ -54,7 +54,8 @@
     if (!(y >= 1990 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= diasMes(y, m))) return null;
     return iso(y, m, d);
   }
-  function parseDate(v, anioDefecto) {
+  /* orden: "dmy" (día/mes/año, español) o "mdy" (mes/día/año, inglés) para fechas escritas solo con números */
+  function parseDate(v, anioDefecto, orden) {
     if (v instanceof Date && !isNaN(v)) return iso(v.getFullYear(), v.getMonth() + 1, v.getDate());
     if (typeof v === "number") {            // número de serie de Excel / Sheets
       if (v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
@@ -64,11 +65,26 @@
     if (!s) return null;
     let m;
     if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/))) return fechaValida(+m[1], +m[2], +m[3]);
-    if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?!\d)/))) return fechaValida(+m[3], +m[2], +m[1]);
+    const mdy = orden === "mdy";
+    if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?!\d)/))) return mdy ? fechaValida(+m[3], +m[1], +m[2]) : fechaValida(+m[3], +m[2], +m[1]);
     if ((m = s.match(/^(\d{1,2})[-/. ]+(?:de )?([a-z]{3})[a-z]*\.?(?:[-/., ]+(?:de )?(\d{4}|\d{2}))?(?!\d)/)) && MESES[m[2]])
       return m[3] || anioDefecto ? fechaValida(+(m[3] || anioDefecto), MESES[m[2]], +m[1]) : null;
-    if ((m = s.match(/^(\d{1,2})[-/](\d{1,2})(?![\d/-])/)) && anioDefecto) return fechaValida(+anioDefecto, +m[2], +m[1]);
+    if ((m = s.match(/^([a-z]{3})[a-z]*\.?[-/. ]+(\d{1,2})(?:(?:, ?|[-/. ]+)(\d{4}))?(?!\d)/)) && MESES[m[1]])
+      return m[3] || anioDefecto ? fechaValida(+(m[3] || anioDefecto), MESES[m[1]], +m[2]) : null;
+    if ((m = s.match(/^(\d{1,2})[-/](\d{1,2})(?![\d/-])/)) && anioDefecto) return mdy ? fechaValida(+anioDefecto, +m[1], +m[2]) : fechaValida(+anioDefecto, +m[2], +m[1]);
     return null;
+  }
+
+  /* ¿las fechas numéricas vienen día/mes o mes/día? Mira cuál de los dos números pasa de 12. */
+  function detectarOrden(textos) {
+    let dmy = 0, mdy = 0, n = 0;
+    for (const t of textos) {
+      const m = String(t == null ? "" : t).trim().match(/^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{4}|\d{2}))?(?!\d)/);
+      if (!m) continue;
+      n++;
+      if (+m[1] > 12 && +m[2] <= 12) dmy++; else if (+m[2] > 12 && +m[1] <= 12) mdy++;
+    }
+    return { orden: mdy > dmy ? "mdy" : "dmy", seguro: n === 0 || (dmy > 0) !== (mdy > 0), numericas: n };
   }
 
   function detectarMoneda(texto) {
@@ -165,7 +181,7 @@
         let f = 0, nu = 0, tx = 0;
         for (const r of filas.slice(0, 80)) {
           const v = r[c]; if (v == null || v === "") continue;
-          if (typeof v !== "number" && parseDate(v, 2000)) f++;
+          if (typeof v !== "number" && (parseDate(v, 2000, "dmy") || parseDate(v, 2000, "mdy"))) f++;
           else if (typeof v === "number" || (/^[\s₡$¢(-]*\d[\d.,]*\)?-?$/.test(String(v)) && parseAmount(v) != null)) nu++;
           else tx += String(v).length;
         }
@@ -180,11 +196,12 @@
       else if (nums.length === 1) cols.monto = nums[0];
     }
     const anio = opc.anio || anioEnTexto(cabecera) || new Date().getFullYear();
+    const det = detectarOrden(filas.slice(hi + 1).map(r => typeof r[cols.fecha] === "string" ? r[cols.fecha] : "")), orden = opc.orden || det.orden;
     const out = [];
     let saldoPrev = null;
     for (let i = hi + 1; i < filas.length; i++) {
       const r = filas[i], g = k => (cols[k] != null ? r[cols[k]] : null);
-      const fecha = parseDate(g("fecha"), anio);
+      const fecha = parseDate(g("fecha"), anio, orden);
       const desc = String(g("desc") == null ? "" : g("desc")).replace(/\s+/g, " ").trim();
       const saldo = cols.saldo != null ? parseAmount(g("saldo")) : null;
       if (!fecha) { continue; }
@@ -210,12 +227,12 @@
       if (!monto || /saldo (anterior|inicial|final)|^total/.test(norm(desc))) continue;
       out.push({ fecha, descripcion: desc || "(sin descripción)", monto, sentido, referencia: String(g("ref") == null ? "" : g("ref")).trim(), saldo });
     }
-    return { filas: out, moneda: detectarMoneda(cabecera), columnas: cols };
+    return { filas: out, moneda: detectarMoneda(cabecera), columnas: cols, orden, ordenSeguro: det.seguro, fechasNumericas: det.numericas };
   }
 
   /* ---------- lectura de PDF (líneas con posiciones) ---------- */
   const RE_MONTO = /(?<![\d.,/])[-(]?[₡$¢]?\s?(?:\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?|\d+[.,]\d{2})(?![\d/])\)?(?:\s?-(?!\d)|\s?(?:CR|DB)\b)?/g;
-  const RE_FECHA_INI = /^\D{0,3}(?:\d{6,}\s+)?(\d{1,2}[-/.]\d{1,2}[-/.](?:\d{4}|\d{2})|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/ ](?:ene|feb|mar|abr|may|jun|jul|ago|set|sep|oct|nov|dic|jan|apr|aug|dec)[a-z]*\.?(?:[-/ ]\d{2,4})?|\d{1,2}[-/]\d{1,2})(?=\s|$)/i;
+  const RE_FECHA_INI = /^\D{0,3}(?:\d{6,}\s+)?(\d{1,2}[-/.]\d{1,2}[-/.](?:\d{4}|\d{2})|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/ ](?:ene|feb|mar|abr|may|jun|jul|ago|set|sep|oct|nov|dic|jan|apr|aug|dec)[a-z]*\.?(?:[-/ ]\d{2,4})?|(?:ene|feb|mar|abr|may|jun|jul|ago|set|sep|oct|nov|dic|jan|apr|aug|dec)[a-z]*\.? \d{1,2}(?:,? \d{4})?|\d{1,2}[-/]\d{1,2})(?=\s|$)/i;
 
   /* lineas: [{ items: [{ str, x, w }] }] en orden de lectura. */
   function parsePdfLineas(lineas, opc) {
@@ -223,6 +240,7 @@
     const txt = l => l.items.map(i => i.str).join(" ").replace(/\s+/g, " ").trim();
     const todo = lineas.slice(0, 60).map(txt).join(" ");
     const anio = opc.anio || anioEnTexto(todo) || new Date().getFullYear();
+    const det = detectarOrden(lineas.map(l => { const m = txt(l).match(RE_FECHA_INI); return m ? m[1] : ""; })), orden = opc.orden || det.orden;
     let colX = null;                      // posición (borde derecho) de columnas débito / crédito / saldo
     const out = [];
     let saldoPrev = null, ultimo = null;
@@ -242,7 +260,7 @@
         ultimo = null; continue;
       }
       const mf = t.match(RE_FECHA_INI);
-      const fecha = mf ? parseDate(mf[1], anio) : null;
+      const fecha = mf ? parseDate(mf[1], anio, orden) : null;
       if (!fecha) {
         const sa = tn.match(/saldo (anterior|inicial)/);
         if (sa) { const ms = t.match(RE_MONTO); if (ms) saldoPrev = Math.abs(parseAmount(ms[ms.length - 1])); ultimo = null; }
@@ -294,7 +312,7 @@
       out.push(ultimo);
     }
     out.forEach(o => delete o.extra);
-    return { filas: out, moneda: detectarMoneda(todo), columnas: colX || {} };
+    return { filas: out, moneda: detectarMoneda(todo), columnas: colX || {}, orden, ordenSeguro: det.seguro, fechasNumericas: det.numericas };
   }
 
   /* fila de estado → movimiento */
@@ -428,7 +446,7 @@
   return {
     TIPOS, TIPO_NOMBRE, CAMPOS, CAMPOS_AUTO, CATEGORIAS,
     norm, hoyISO, sumarDias, nuevoId, diasMes, iso,
-    parseAmount, parseDate, detectarMoneda, tipoDe, categorizar, claveDe,
+    parseAmount, parseDate, detectarOrden, detectarMoneda, tipoDe, categorizar, claveDe,
     parseTabla, parsePdfLineas, aMovimiento, huella,
     fechasPendientes, aplicarAutomaticos,
     convertir, filtrar, resumen, porCategoria, serie,
