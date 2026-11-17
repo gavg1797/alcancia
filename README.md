@@ -18,6 +18,7 @@ Alcancía lee tus estados de cuenta del banco, te deja anotar los gastos en efec
 ## Dónde se guardan los datos
 
 - **Solo en tu Google Drive**, en la hoja **«Alcancía - finanzas»**, con tres pestañas: `Movimientos`, `Automaticos` y `Ajustes`. Puedes abrirla y editarla en Google Sheets; los cambios aparecen en la app al sincronizar. Para agregar una fila a mano, deja la columna `id` vacía.
+- **En vivo:** cada movimiento se guarda en la hoja al instante, y los demás dispositivos conectados a la misma cuenta lo reciben en unos segundos (también los cambios que hagas a mano en Google Sheets). Si dos personas guardan a la vez, la app comprueba la hoja y conserva lo de ambas.
 - La app pide **iniciar sesión con Google** para mostrar tus datos y los descarga de tu hoja al entrar. Mientras la sesión está abierta, guarda una copia de trabajo en el navegador para ir rápido.
 - **Cerrar sesión** (arriba a la derecha o en Ajustes) guarda los cambios en Google Sheets y **borra todo del dispositivo**. Si no se pudieron guardar (sin internet), avisa antes.
 - **Cada cuenta ve solo su información:** si en el mismo navegador entra otra cuenta, lo que quedara de la anterior se borra.

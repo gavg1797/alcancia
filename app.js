@@ -627,14 +627,20 @@
     S.hojaId = n.spreadsheetId;
     await api(`${SH}/${S.hojaId}/values:batchUpdate`, { method: "POST", body: { valueInputOption: "RAW", data: Object.keys(HOJAS).map(t => ({ range: t + "!A1", values: [HOJAS[t]] })) } });
   }
-  let tSync; function programarSync() { clearTimeout(tSync); if (G.token) tSync = setTimeout(() => sincronizar(false), 1500); }
-  async function sincronizar(avisar) {
+  let tSync; function programarSync() { clearTimeout(tSync); if (G.token) tSync = setTimeout(() => sincronizar(false), 300); }
+  async function version() {
+    try { return (await api(`https://www.googleapis.com/drive/v3/files/${S.hojaId}?fields=version`)).version || ""; } catch (e) { if (e.status === 401) throw e; return ""; }
+  }
+  async function sincronizar(avisar, enVivo) {
     if (!G.token) return;
     if (G.ocupado) { G.otra = true; return; }
     G.ocupado = true; G.estado = "busy"; pintarSync();
     try {
       if (G.exp < Date.now() + 30000) { const e = new Error("vencida"); e.status = 401; throw e; }
       await asegurarHoja();
+      const antes = JSON.stringify([S.movs, S.autos, S.aj]);
+      for (let intento = 0; ; intento++) {
+      const v0 = await version();
       const rg = Object.keys(HOJAS).map(t => "ranges=" + encodeURIComponent(t + "!A:L")).join("&");
       const vr = (await api(`${SH}/${S.hojaId}/values:batchGet?${rg}&valueRenderOption=UNFORMATTED_VALUE`)).valueRanges.map(v => v.values || []);
       const rm = C.deFilas(vr[0], C.CAMPOS, C.limpiarMov);
@@ -652,6 +658,8 @@
       correrAutomaticos();
       subir = subir || S.sucios.length > 0 || S.autosSucio || S.ajSucio;
       if (subir) {
+        // si otro dispositivo guardó mientras tanto, se vuelve a leer y combinar antes de escribir
+        if (intento < 4 && v0 && (await version()) !== v0) continue;
         const sello = new Map(S.sucios.map(id => { const m = S.movs.find(x => x.id === id); return [id, m ? m.actualizado : 0]; })), borr = S.borrados.slice(), sa = S.autosSucio, sj = S.ajSucio;
         const ms = [...S.movs].sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0);
         const datos = {
@@ -661,11 +669,20 @@
         };
         await api(`${SH}/${S.hojaId}/values:batchUpdate`, { method: "POST", body: { valueInputOption: "RAW", data: Object.keys(datos).map(t => ({ range: t + "!A1", values: datos[t] })) } });
         await api(`${SH}/${S.hojaId}/values:batchClear`, { method: "POST", body: { ranges: Object.keys(datos).map(t => `${t}!A${datos[t].length + 1}:Z`) } });
+        // comprueba que lo escrito quedó en la hoja (otro dispositivo pudo guardar en el mismo instante)
+        const chk = (await api(`${SH}/${S.hojaId}/values:batchGet?ranges=${encodeURIComponent("Movimientos!A:L")}&valueRenderOption=UNFORMATTED_VALUE`)).valueRanges[0].values || [];
+        const enHoja = new Set(C.deFilas(chk, C.CAMPOS, C.limpiarMov).items.map(m => m.id));
+        const quedo = [...sello.keys()].every(id => !S.movs.some(m => m.id === id) || enHoja.has(id)) && borr.every(id => !enHoja.has(id));
+        if (!quedo && intento < 4) continue;
         S.sucios = S.sucios.filter(id => { const m = S.movs.find(x => x.id === id); return !(sello.has(id) && (!m || m.actualizado === sello.get(id))); });
         S.borrados = S.borrados.filter(id => !borr.includes(id));
         if (S.autosSucio === sa) S.autosSucio = 0;
         if (S.ajSucio === sj) S.ajSucio = 0;
       }
+      G.version = subir ? await version() : v0;
+      break;
+      }
+      if (enVivo && JSON.stringify([S.movs, S.autos, S.aj]) !== antes) toast("Actualizado desde otro dispositivo");
       S.ultimaSync = Date.now(); G.estado = "ok"; G.error = ""; guardar();
       if (avisar) toast("Sincronizado con Google Sheets.");
     } catch (e) {
@@ -697,6 +714,14 @@
   let tR; window.addEventListener("resize", () => { clearTimeout(tR); tR = setTimeout(() => UI.vista === "resumen" && pintar(), 150); });
   document.addEventListener("visibilitychange", () => { if (!bloqueado && !document.hidden && G.token && Date.now() - S.ultimaSync > 20000) sincronizar(false); });
   setInterval(() => { if (!bloqueado && !document.hidden && G.token && !$("#dlg").open && !UI.prev && Date.now() - S.ultimaSync > 60000) sincronizar(false); }, 15000);
+  /* En vivo: cada 4 s pregunta a Google Drive si la hoja cambió (consulta muy liviana) y trae los cambios de otros dispositivos */
+  let vivoOcupado = false;
+  setInterval(async () => {
+    if (vivoOcupado || bloqueado || document.hidden || !navigator.onLine || !G.token || !S.hojaId || G.ocupado || $("#dlg").open || UI.prev || G.exp < Date.now() + 30000) return;
+    vivoOcupado = true;
+    try { const v = await version(); if (v && G.version && v !== G.version) await sincronizar(false, true); else if (v && !G.version) G.version = v; }
+    catch (e) { } finally { vivoOcupado = false; }
+  }, 4000);
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });
 
   if (G.token && S.cuenta) {
@@ -706,5 +731,5 @@
   } else {
     mostrarAcceso();
   }
-  window.Alcancia = { S, UI, pintar, sincronizar };
+  window.Alcancia = { S, UI, G, pintar, sincronizar };
 })();
