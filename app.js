@@ -16,7 +16,9 @@
     hojaId: null, cuenta: null, ultimaSync: 0
   }, leer());
   function leer() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
-  function guardar() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { toast("No se pudo guardar en este dispositivo (memoria llena)."); } }
+  // Sin sesión iniciada no se guarda nada en este dispositivo (todo vive en Google Sheets)
+  let cerrando = false;
+  function guardar() { if (cerrando || !S.cuenta) return; try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { toast("No se pudo guardar en este dispositivo (memoria llena)."); } }
 
   const UI = { sel: null, vista: "resumen", periodo: "mes", desde: "", hasta: "", grano: "", series: { gasto: true, ahorro: true, inversion: true, ingreso: false }, dona: "categorias", q: "", ftipo: "", limite: 200, prev: null, cola: [] };
 
@@ -493,22 +495,21 @@
     const el = $("#v-ajustes"), url = S.hojaId ? "https://docs.google.com/spreadsheets/d/" + S.hojaId : "";
     el.innerHTML = `<div class="card"><h2>Google Sheets</h2>
       ${G.token ? `<p class="sub">Conectado como <b>${esc(S.cuenta || "tu cuenta")}</b>. Cada cambio se guarda en la hoja <b>${esc(CFG.nombreHoja)}</b> de tu Google Drive.</p>
-        <div class="row">${url ? `<a class="btn" href="${url}" target="_blank" rel="noopener">Abrir la hoja</a>` : ""}<button class="btn" id="jSync">Sincronizar ahora</button><button class="btn" id="jSalir">Desconectar</button></div>`
-        : `<p class="sub">${S.cuenta ? `La sesión de <b>${esc(S.cuenta)}</b> venció.` : "Conecta tu cuenta de Google para guardar todo en una hoja de cálculo de tu Drive y verlo en todos tus dispositivos."}</p><button class="btn pri" id="jCon">Conectar con Google</button>`}
+        <div class="row">${url ? `<a class="btn" href="${url}" target="_blank" rel="noopener">Abrir la hoja</a>` : ""}<button class="btn" id="jSync">Sincronizar ahora</button><button class="btn" id="jSalir">Cerrar sesión</button></div>`
+        : `<p class="sub">La sesión de <b>${esc(S.cuenta || "tu cuenta")}</b> venció. Vuelve a conectar para guardar tus cambios en Google Sheets.</p><div class="row"><button class="btn pri" id="jCon">Reconectar con Google</button><button class="btn" id="jSalir">Cerrar sesión</button></div>`}
       ${G.error ? `<p class="note warn">${G.error}</p>` : ""}</div>
       <div class="card"><h2>Histórico</h2><p class="sub">${S.movs.length} movimientos guardados${S.sucios.length + S.borrados.length ? ` · ${S.sucios.length + S.borrados.length} cambios sin subir a Google` : ""}.</p>
         <button class="btn pri" id="jXls">Descargar histórico en Excel</button></div>
       <div class="card"><h2>Preferencias</h2>
         <div class="kv"><div>Tipo de cambio<small>Colones por dólar, para sumar las dos monedas</small></div><input type="number" id="jTc" min="1" step="0.01" value="${esc(S.aj.tc)}" style="width:110px"></div>
         <div class="kv"><div>Categorías aprendidas<small>${(S.aj.reglas || []).length} correcciones tuyas que se aplican solas</small></div><button class="btn sm" id="jReg" ${(S.aj.reglas || []).length ? "" : "disabled"}>Olvidar</button></div>
-        <div class="kv"><div>Datos en este dispositivo<small>No borra nada de Google Sheets</small></div><button class="btn sm danger" id="jBor">Borrar</button></div></div>`;
-    if ($("#jCon")) $("#jCon").onclick = () => conectar();
+        <div class="kv"><div>Privacidad<small>Tus datos viven en tu Google Sheets. Al cerrar sesión no queda nada en este dispositivo.</small></div></div></div>`;
+    if ($("#jCon")) $("#jCon").onclick = () => conectar("");
     if ($("#jSync")) $("#jSync").onclick = () => sincronizar(true);
-    if ($("#jSalir")) $("#jSalir").onclick = () => { if (G.token && window.google) try { google.accounts.oauth2.revoke(G.token, () => { }); } catch (e) { } G.token = null; sessionStorage.removeItem("alcancia.tk"); S.cuenta = null; guardar(); pintar(); };
+    if ($("#jSalir")) $("#jSalir").onclick = () => cerrarSesion();
     $("#jXls").onclick = descargarExcel;
     $("#jTc").onchange = e => { const v = +e.target.value; if (v > 0) { S.aj.tc = v; S.ajSucio = Date.now(); cambio(); } };
     $("#jReg").onclick = () => { S.aj.reglas = []; S.ajSucio = Date.now(); cambio(); };
-    $("#jBor").onclick = () => { if (!confirm("¿Borrar todos los datos guardados en este dispositivo? Lo que ya está en Google Sheets no se toca.")) return; localStorage.removeItem(LS); sessionStorage.removeItem("alcancia.tk"); location.reload(); };
   }
 
   function descargarExcel() {
@@ -540,26 +541,65 @@
       document.head.appendChild(s);
     });
   }
-  async function conectar() {
+  async function conectar(prompt) {
     try {
       if (!CFG.googleClientId) throw new Error("Falta el ID de cliente de Google en config.js.");
-      await cargarGIS();
+      if (!(window.google && google.accounts)) await cargarGIS();
       const resp = await new Promise((ok, no) => {
         G.cliente = google.accounts.oauth2.initTokenClient({ client_id: CFG.googleClientId, scope: ALCANCE, hint: S.cuenta || undefined, callback: r => r && r.access_token ? ok(r) : no(new Error("Google no dio permiso.")), error_callback: e => no(new Error(e && e.type === "popup_closed" ? "Se cerró la ventana de Google." : "No se pudo abrir la ventana de Google. Permite las ventanas emergentes.")) });
-        G.cliente.requestAccessToken({ prompt: "" });
+        G.cliente.requestAccessToken({ prompt: prompt == null ? "" : prompt });
       });
       if (!google.accounts.oauth2.hasGrantedAllScopes(resp, "https://www.googleapis.com/auth/drive.file")) throw new Error("Falta marcar el permiso de Google Drive al iniciar sesión. Vuelve a conectar y márcalo.");
       G.token = resp.access_token; G.exp = Date.now() + (resp.expires_in || 3600) * 1000;
       sessionStorage.setItem("alcancia.tk", JSON.stringify({ token: G.token, exp: G.exp }));
       const u = await (await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + G.token } })).json();
-      if (S.cuenta && u.email && S.cuenta !== u.email && S.movs.length) {
-        if (!confirm(`Este dispositivo tiene datos de ${S.cuenta}. ¿Reemplazarlos por los de ${u.email}?`)) { G.token = null; sessionStorage.removeItem("alcancia.tk"); return; }
-        Object.assign(S, { movs: [], autos: [], sucios: [], borrados: [], autosSucio: 0, ajSucio: 0, hojaId: null });
+      // Privacidad: si en este dispositivo quedó información de otra cuenta, se borra (su copia está en su Google Sheets)
+      if (S.cuenta && u.email && S.cuenta !== u.email) {
+        localStorage.removeItem(LS);
+        Object.assign(S, { movs: [], autos: [], sucios: [], borrados: [], autosSucio: 0, ajSucio: 0, hojaId: null, ultimaSync: 0, aj: { tc: CFG.tipoCambio || 500, moneda: "CRC", reglas: [] } });
       }
       S.cuenta = u.email || S.cuenta; G.error = ""; guardar();
-      await sincronizar(true);
-    } catch (e) { G.error = esc(e.message || String(e)); toast(e.message || "No se pudo conectar."); pintar(); }
+      await sincronizar(!bloqueado);
+      if (bloqueado) abrirApp();
+    } catch (e) { G.error = esc(e.message || String(e)); if (bloqueado) gmsg(e.message || "No se pudo iniciar sesión."); else { toast(e.message || "No se pudo conectar."); pintar(); } }
+    finally { if (bloqueado) $$("#gate button").forEach(b => b.disabled = false); }
   }
+
+  /* ---------- Acceso y cierre de sesión ---------- */
+  let bloqueado = false;
+  const gmsg = t => { $("#gMsg").textContent = t || ""; };
+  function mostrarAcceso() {
+    bloqueado = true; document.body.classList.add("locked"); $("#gate").hidden = false;
+    $("#gCont").hidden = !S.cuenta; if (S.cuenta) $("#gCont").textContent = "Continuar como " + S.cuenta;
+    $("#gLoginTx").textContent = S.cuenta ? "Usar otra cuenta de Google" : "Iniciar sesión con Google";
+    gmsg(navigator.onLine ? "" : "Sin internet. Conéctate para iniciar sesión.");
+    if (navigator.onLine) cargarGIS().catch(() => gmsg("No se pudo cargar Google. Revisa tu conexión."));
+  }
+  function abrirApp() {
+    bloqueado = false; document.body.classList.remove("locked"); $("#gate").hidden = true;
+    if (correrAutomaticos()) guardar();
+    pintar();
+  }
+  function entrar(prompt) {
+    if (!navigator.onLine) { gmsg("Sin internet. Conéctate para iniciar sesión."); return; }
+    $$("#gate button").forEach(b => b.disabled = true); gmsg("Abriendo Google…");
+    conectar(prompt).then(() => { if (bloqueado) gmsg(G.error ? "" : ""); });
+  }
+  $("#gCont").onclick = () => entrar("");
+  $("#gLogin").onclick = () => entrar("select_account");
+  const pendientes = () => S.sucios.length + S.borrados.length + (S.autosSucio ? 1 : 0) + (S.ajSucio ? 1 : 0);
+  async function cerrarSesion() {
+    if (G.token) { try { await sincronizar(false); } catch (e) { } }
+    if (pendientes() && !confirm("No se pudieron guardar tus últimos cambios en Google Sheets (sin internet o la sesión de Google venció). Si cierras sesión ahora, esos cambios se perderán.\n\n¿Cerrar sesión de todos modos?")) return;
+    if (G.token && window.google) try { google.accounts.oauth2.revoke(G.token, () => { }); } catch (e) { }
+    cerrando = true;
+    localStorage.removeItem(LS); sessionStorage.removeItem("alcancia.tk");
+    location.reload();
+  }
+  $("#salir").onclick = () => {
+    if (!confirm("¿Cerrar sesión? Tus cambios se guardan en Google Sheets y se borran de este dispositivo.")) return;
+    cerrarSesion();
+  };
   async function api(url, opc) {
     opc = opc || {};
     const r = await fetch(url, { method: opc.method || "GET", headers: Object.assign({ Authorization: "Bearer " + G.token }, opc.body ? { "Content-Type": "application/json" } : {}), body: opc.body ? JSON.stringify(opc.body) : undefined });
@@ -643,21 +683,28 @@
   }
   function pintarSync() {
     const b = $("#sync"), pend = S.sucios.length + S.borrados.length;
+    const mail = S.cuenta || "";
+    $("#who").hidden = !mail || bloqueado; $("#whoMail").textContent = mail; $("#whoAva").textContent = mail.slice(0, 1).toUpperCase(); $("#who").title = mail;
+    $("#salir").hidden = !mail || bloqueado;
     b.className = "sync " + (!G.token ? "" : G.estado === "busy" ? "busy" : G.estado === "err" ? "err" : "ok");
     $("#syncTxt").textContent = !G.token ? (S.cuenta ? "Reconectar con Google" : "Conectar con Google") : G.estado === "busy" ? "Sincronizando…" : G.estado === "err" ? "Error al sincronizar" : pend ? "Guardando…" : "Guardado en Google Sheets";
   }
 
   /* ================= inicio ================= */
-  $("#sync").onclick = () => { if (!G.token) conectar(); else if (G.estado === "err") { UI.vista = "ajustes"; pintar(); } else sincronizar(true); };
+  $("#sync").onclick = () => { if (!G.token) conectar(""); else if (G.estado === "err") { UI.vista = "ajustes"; pintar(); } else sincronizar(true); };
   $("#fab").onclick = () => formulario("mov");
   $$("nav.tabs button").forEach(b => b.onclick = () => { UI.vista = b.dataset.v; pintar(); window.scrollTo(0, 0); });
   let tR; window.addEventListener("resize", () => { clearTimeout(tR); tR = setTimeout(() => UI.vista === "resumen" && pintar(), 150); });
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && G.token && Date.now() - S.ultimaSync > 20000) sincronizar(false); });
-  setInterval(() => { if (!document.hidden && G.token && !$("#dlg").open && !UI.prev && Date.now() - S.ultimaSync > 60000) sincronizar(false); }, 15000);
+  document.addEventListener("visibilitychange", () => { if (!bloqueado && !document.hidden && G.token && Date.now() - S.ultimaSync > 20000) sincronizar(false); });
+  setInterval(() => { if (!bloqueado && !document.hidden && G.token && !$("#dlg").open && !UI.prev && Date.now() - S.ultimaSync > 60000) sincronizar(false); }, 15000);
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });
 
-  if (correrAutomaticos()) guardar();
-  pintar();
-  if (G.token) sincronizar(false);
+  if (G.token && S.cuenta) {
+    if (correrAutomaticos()) guardar();
+    pintar();
+    sincronizar(false);
+  } else {
+    mostrarAcceso();
+  }
   window.Alcancia = { S, UI, pintar, sincronizar };
 })();
