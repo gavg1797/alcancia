@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Alcancía · finanzas personales</title>
 <meta name="description" content="Sube tus estados de cuenta, registra gastos en efectivo y mira en qué se va tu dinero. Todo se guarda en tu Google Sheets.">
@@ -216,8 +217,8 @@ a{color:var(--accent)}
 <dialog id="dlg"></dialog>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="lib/xlsx-0.20.3.full.min.js" defer></script>
+<script src="lib/pdfjs-4.10.38/cargar.js" defer></script>
 <script src="config.js" defer></script>
 <script src="core.js" defer></script>
 <script src="app.js" defer></script>

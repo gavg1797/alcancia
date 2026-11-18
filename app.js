@@ -374,14 +374,15 @@
       x.dup = dup;
     }
   }
+  const MAX_ARCHIVO = 20 * 1048576;   // 20 MB por archivo
   async function leerArchivo(f) {
+    if (f.size > MAX_ARCHIVO) throw new Error(`«${f.name}» pesa más de ${MAX_ARCHIVO / 1048576} MB. Los estados de cuenta suelen pesar mucho menos: revisa que sea el archivo correcto.`);
     const ext = (f.name.split(".").pop() || "").toLowerCase(), buf = await f.arrayBuffer();
     if (ext === "pdf" || f.type === "application/pdf") {
-      if (!window.pdfjsLib) throw new Error("No se pudo cargar el lector de PDF. Revisa tu conexión y recarga.");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      await cargarPdfjs();
       let doc, clave;
       for (let i = 0; ; i++) {
-        try { doc = await pdfjsLib.getDocument({ data: buf.slice(0), password: clave }).promise; break; }
+        try { doc = await pdfjsLib.getDocument({ data: buf.slice(0), password: clave, isEvalSupported: false }).promise; break; }
         catch (e) {
           if (e && e.name === "PasswordException" && i < 3) { clave = prompt(i ? "Contraseña incorrecta. Inténtalo de nuevo:" : "Este PDF tiene contraseña (los bancos suelen usar tu número de cédula). Escríbela para abrirlo:"); if (clave == null) throw new Error("Se canceló la apertura del PDF."); }
           else throw new Error("No se pudo abrir el PDF.");

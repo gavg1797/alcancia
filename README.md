@@ -52,3 +52,4 @@ Para usar otro proyecto de Google, sigue la guía «Configurar Google Drive grat
 | `app.js` | Pantallas, gráficos y sincronización con Google Sheets |
 | `config.js` | ID de cliente de Google y nombre de la hoja |
 | `sw.js` | Permite abrir la app sin conexión |
+| `lib/` | Lector de PDF (pdf.js 4.10.38) y de Excel (SheetJS 0.20.3), alojados aquí mismo para no depender de servidores externos |
